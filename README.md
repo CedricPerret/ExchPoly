@@ -1,42 +1,50 @@
 # 💱 ExchPoly
 
-Code for agent-based simulations presented in:
+Code and derivations for the study:
 
 **"How economic exchange can favour human genetic diversity"**
 
-This repository contains the simulation scripts and analysis used in the above study.
+This repository includes both simulation scripts and analytical work supporting the study.
+
+---
 
 ## 📖 Overview
 
-This repository starts by defining the fitness function, which is then passed to the `evol_model` function from `Toolbox.jl` (in [`JuliassicPark.jl`](https://github.com/CedricPerret/JuliassicPark) along with simulation parameters. The code includes a variety of simulation scenarios, varying:
+This repository contains two main components:
+
+### 1. 🧬 Agent-based Simulations (`Simulations_ExchPoly.jl`)
+Simulation code written in Julia, using `Toolbox.jl` functions (from [`JuliassicPark.jl`](https://github.com/CedricPerret/JuliassicPark)). These simulations explore how modes of economic exchange affect the evolution of individual traits under different parameter regimes.
+
+Scenarios vary:
 - Modes of exchange
 - Values of `σ` and `α`
 - Parameter sweeps over `η` and `σ`
 
-The structure of the code mirrors how models are typically introduced in academic papers. It starts by defining the fitness function — which links individual traits to evolutionary success — followed by the components required to run the simulations.
+The structure of the code mirrors standard academic modelling: it starts by defining the fitness function — which links traits to evolutionary success — followed by components required to run the simulations.
 
-**Note:** All relevant functions must be defined and loaded at the start of the script to ensure the simulations run correctly.
+> **Note:** All relevant functions must be defined and loaded at the start of the script to ensure the simulations run correctly.
+
+### 2. 📐 Analytical Derivations (`ExchPoly_analysis_mathematica.nb`)
+A Mathematica notebook containing all derivations and analytical results referenced in the paper.
 
 ---
 
 ## 📦 Dependencies
 
-This project **requires functions defined in [`JuliassicPark.jl`](https://github.com/CedricPerret/JuliassicPark)**. Make sure to clone and load that repository as part of your environment before running the simulations.
+**For the Julia simulations:**
+- Julia 1.9+
+- External repo: [`JuliassicPark.jl`](https://github.com/CedricPerret/JuliassicPark)
+- Common Julia packages: `Optim.jl`, `Plots.jl`, etc.
+
+**For the analytical notebook:**
+- Wolfram Mathematica 12.0+
 
 ---
 
 ## 🚧 Status
 
-The code is **not currently tailored for public use** and may require manual setup or editing to run on your system.  
-If you're interested in running or adapting the code, feel free to **contact me with any questions**.
-
----
-
-## 🔧 Requirements
-
-- Julia 1.9+
-- External repo: [`JuliassicPark.jl`](https://github.com/yourusername/JuliassicPark.jl)
-- Common Julia packages: `Optim.jl`, `Plots.jl`, etc.
+This codebase is currently **not tailored for public use** and may require manual setup or editing to run on your system.  
+If you're interested in reproducing or adapting the simulations or analysis, feel free to **contact me with any questions**.
 
 ---
 
@@ -49,4 +57,3 @@ If you use this code or adapt the model, please cite the associated paper once p
 ## License
 
 Currently private use only. Reach out if you’re interested in using or extending it.
-
