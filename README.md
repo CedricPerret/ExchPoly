@@ -8,7 +8,7 @@ This repository contains the simulation scripts and analysis used in the above s
 
 ## 📖 Overview
 
-This repository starts by defining the fitness function, which is then passed to the `evol_model` function from `Toolbox.jl` (in [`JuliassicPark.jl`](https://github.com/yourusername/JuliassicPark.jl)) along with simulation parameters. The code includes a variety of simulation scenarios, varying:
+This repository starts by defining the fitness function, which is then passed to the `evol_model` function from `Toolbox.jl` (in [`JuliassicPark.jl`](https://github.com/CedricPerret/JuliassicPark.jl)) along with simulation parameters. The code includes a variety of simulation scenarios, varying:
 - Modes of exchange
 - Values of `σ` and `α`
 - Parameter sweeps over `η` and `σ`
