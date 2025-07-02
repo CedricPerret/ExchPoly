@@ -38,8 +38,8 @@ This function computes the fitness of a population based on the production and e
 # Examples
 
 population = [[0.5, 0.3], [0.6, 0.4], [0.7, 0.5]]  # Example population
-o_x = 1.0
-o_y = 1.0
+o_x = -2.0
+o_y = 2.0
 sigma = 0.5
 palpha = 0.7
 exchange_fun = "walrasian_bargain"
@@ -48,7 +48,7 @@ eta = 0.95
 w, h, q_x, q_y, c_x, c_y = fitness_function(population; o_x=o_x, o_y=o_y, sigma=sigma, alpha=palpha, exchange_fun=exchange_fun, eta=eta)
 
 """
-function fitness_function(population::Vector{Vector{Float64}}; o_x,o_y,sigma,alpha,exchange_fun::String,eta,args...)
+function fitness_function(population; o_x,o_y,sigma,alpha,exchange_fun::String,eta,args...)
     #--- 1 Choose time allocation (see in Mathematica)
     if exchange_fun == "walrasian_bargain"
         #-> There are many pairs to process, so multithreading improves performance.
@@ -66,11 +66,24 @@ function fitness_function(population::Vector{Vector{Float64}}; o_x,o_y,sigma,alp
     c_y = getindex.(c,2)
     #--- 4 Calculate fitness using utility function
     w = broadcast_nested(utility_function,c_x,c_y,alpha)
-    return(w,h,q_x,q_y,c_x,c_y)
+    #--- Print additional output
+    ## Variance in trait value
+    if isa(o_x,Integer)
+        #-> Two traits
+        var_z1 = var(getindex.(vcat(population...),1);corrected=false)
+        var_z2 = var(getindex.(vcat(population...),2);corrected=false)
+        return(w,h,q_x,q_y,c_x,c_y,var_z1,var_z2)
+    else
+        #-> Single trait
+        var_z = var(vcat(population...);corrected=false)
+        return(w,h,q_x,q_y,c_x,c_y,var_z)
+    end
 end
 
+
+
 #! Light version which outputs only the fitness and time allocation
-function fitness_function_light(population::Vector{Vector{Float64}}; o_x,o_y,sigma,alpha,exchange_fun::String,eta,args...)
+function fitness_function_light(population; o_x,o_y,sigma,alpha,exchange_fun::String,eta,args...)
     fitness_function(population; o_x,o_y,sigma,alpha,exchange_fun,eta)[1:2]
 end
 
@@ -120,6 +133,9 @@ function find_h(group,eta,o_x,o_y,sigma, alpha)
     elseif eta > 1
         println("Increasing returns to scale not implemented. eta should be inferior to 1")
     else
+        if typeof(o_x) != Int64
+            error("The alternative production function is not implemented for VARYING time allocation")
+        end
         #-> Diminishing returns to scale. We first determinate the price
         if length(group) == 2
             #-> Dyadic exchange
@@ -193,9 +209,10 @@ end
 
 
 """
-    production_function(z::Float64, h::Float64, optimal::Float64, sigma::Float64, eta::Float64)
+    production_function(z::Float64, h::Float64, optimal::Float64, sigma, eta::Float64)
 
 Calculates the quantity `q` of a good produced based on the individual's trait `z`, time allocation `h`, optimal trait value `optimal`, production breadth `sigma`, and scale elasticity `eta`.
+If optimal is an integer, then we use an alternative production function. Be careful, only eta 0 is implemented for this case.
 
 # Arguments
 - `z::Float64`: Trait of the individual.
@@ -207,14 +224,21 @@ Calculates the quantity `q` of a good produced based on the individual's trait `
 # Returns
 - `q::Float64`: Quantity produced.
 """
-function production_function(z,h,optimal,sigma,eta)
+function production_function(z,h,optimal::Float64,sigma,eta)
     q = h^eta * exp(-(z-optimal)^2/sigma^2)
 end
 
+function production_function(z,h,optimal::Integer,sigma,eta)
+    q = h^eta * z[optimal]^sigma
+end
+
+
+
 """
-    production_function(z::Float64, h::Float64, optimal::Float64, sigma::Float64, eta::Float64)
+    production_function(z::Float64, h::Float64, optimal, sigma::Float64)
 
 Calculates the productivity `r` of a good produced based on the individual's trait `z`,  optimal trait value `optimal` and production breadth `sigma`.
+If optimal is an integer, then we use an alternative production function. Be careful, only eta 0 is implemented for this case.
 
 # Arguments
 - `z::Float64`: Trait of the individual.
@@ -224,9 +248,15 @@ Calculates the productivity `r` of a good produced based on the individual's tra
 # Returns
 - `r::Float64`: Quantity produced.
 """
-function productivity_function(z,optimal,sigma)
+function productivity_function(z,optimal::Float64,sigma)
     r = exp(-(z-optimal)^2/sigma^2)
 end
+
+function productivity_function(z,optimal::Integer,sigma)
+    z[optimal]^sigma
+end
+
+
 
 """
     exchange_function(type, q_x, q_y, alpha)
@@ -285,7 +315,7 @@ parameters = Dict{Any,Any}(pairs((z_ini = Normal(0.,0.05), n_gen = 1000, n_ini =
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "g",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = sqrt(1), alpha = 0.5, eta = 0.95, other_output_name=["h","q_x","q_y","c_x","c_y"],
+o_x = -2., o_y = 2., sigma = sqrt(1), alpha = 0.5, eta = 0.95, other_output_name=["h","q_x","q_y","c_x","c_y"],
 write_file=false, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print"],
 j_print = 100,n_print=1,simplify=false)))
 
@@ -304,13 +334,13 @@ cd(homedir()*"/OneDrive/Research/A1-Projects/2023_ExchPoly/Res/Simul/noh")
 
 ## Low production breadth sigma
 
-parameters = Dict{Any,Any}(pairs((z_ini = 2., n_gen = 5000, n_ini = 2, n_patch = 500,
+parameters = Dict{Any,Any}(pairs((z_ini = 2., n_gen = 5000, n_ini = 2, n_patch = 2500,
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "no_exchange",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = 1, alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
-j_print = 100)))
+o_x = -2., o_y = 2., sigma = 1, alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
+j_print = 200)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
 
@@ -319,8 +349,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = 0., n_gen = 5000, n_ini = 2, n_patch =
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "no_exchange",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = 1, alpha = 0.75, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = 1, alpha = 0.75, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 100)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -330,8 +360,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = 0., n_gen = 5000, n_ini = 2, n_patch =
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "no_exchange",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = 1, alpha = 0.25, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = 1, alpha = 0.25, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 100)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -342,8 +372,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = 2., n_gen = 10000, n_ini = 2, n_patch 
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "no_exchange",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = sqrt(5), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = sqrt(5), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 200)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -354,8 +384,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = 2., n_gen = 15000, n_ini = 2, n_patch 
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "no_exchange",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = sqrt(10), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = sqrt(10), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 300)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -365,17 +395,17 @@ res=evol_model(reproduction_WF,fitness_function,parameters)
 #*** Dyadic exchange
 #--- Low production breadth sigma
 ##Load population from the end of the simulations without exchange
-data=CSV.read(homedir()*"/OneDrive/Research/A1-Projects/2023_ExchPoly/Res/Simul/noh/"*"Exchpoly-alpha=0.5-de=i-eta=0-exchange_fun=no_exchange-n_gen=5.0k-n_patch=500-n_simul=1.0-o_x=-2.0-o_y=2.0-sigma=1.0.csv",DataFrame,header=true,select=["gen", "z"] );
+data=CSV.read(homedir()*"/OneDrive/Research/A1-Projects/2023_ExchPoly/Res/Simul/noh/"*"Exchpoly-alpha=0.5-de=i-eta=0-exchange_fun=no_exchange-n_gen=5.0k-n_patch=2.5k-n_simul=1.0-o_x=-2.0-o_y=2.0-sigma=1.0.csv",DataFrame,header=true,select=["gen", "z"] );
 population_initial_low_sigma = [collect(x) for x in partition(dropdims(data.z[data.gen .== maximum(data.gen), :],dims=2),2)]
 data = nothing
 
-parameters = Dict{Any,Any}(pairs((z_ini = population_initial_low_sigma, n_gen = 7500, n_ini = 2, n_patch = 500,
+parameters = Dict{Any,Any}(pairs((z_ini = population_initial_low_sigma, n_gen = 7500, n_ini = 2, n_patch = 2500,
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = 1, alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
-j_print = 50)))
+o_x = -2., o_y = 2., sigma = 1, alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
+j_print = 100)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
 
@@ -390,8 +420,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = population_initial_low_sigma, n_gen = 
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,n_simul=1,
 de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = 1, alpha = 0.75, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = 1, alpha = 0.75, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 500)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -407,8 +437,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = population_initial_low_sigma, n_gen = 
 boundaries=[-2.5,2.5],n_simul=1,
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = 1, alpha = 0.25, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = 1, alpha = 0.25, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 500)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -423,8 +453,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = population_initial_high_sigma, n_gen =
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = sqrt(5), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = sqrt(5), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 200)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -441,8 +471,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = population_initial_high_sigma_market, 
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "market",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = sqrt(5), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = sqrt(5), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 200,simplify=false)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -464,8 +494,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = population_initial, n_gen = 10000, n_i
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = 1, alpha = 0.5, eta = 0.9, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = 1, alpha = 0.5, eta = 0.9, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 50)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -479,8 +509,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = population_initial_high_sigma, n_gen =
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = 1, alpha = 0.5, eta = 0.5, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = 1, alpha = 0.5, eta = 0.5, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 50)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -496,8 +526,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = population_initial_high_sigma_dyadic, 
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = sqrt(10), alpha = 0.5, eta = 0.5, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = sqrt(10), alpha = 0.5, eta = 0.5, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 150,simplify=false)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -509,8 +539,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = Normal(0.,0.05), n_gen = 10000, n_ini 
 boundaries= [-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = sqrt(1), alpha = 0.5, eta = 0.5, other_output_name=["h"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = sqrt(1), alpha = 0.5, eta = 0.5, other_output_name=["h"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 9999, n_print=1)))
 
 @time evol_model(reproduction_WF,fitness_function_light,parameters)
@@ -526,8 +556,8 @@ for eta_i in eta_list
         boundaries= [-2.5,2.5],
         mu_m = 0.01, sigma_m = 0.02,
         de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
-        o_x = -2, o_y = 2, sigma = sqrt(sigmasq_i), alpha = 0.5, eta = eta_i, other_output_name=["h"],
-        write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+        o_x = -2., o_y = 2., sigma = sqrt(sigmasq_i), alpha = 0.5, eta = eta_i, other_output_name=["h"],
+        write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
         j_print = 9999, n_print=1)))
         evol_model(reproduction_WF,fitness_function_light,parameters)
     end
@@ -547,8 +577,8 @@ parameters = Dict{Any,Any}(pairs((z_ini = population_initial_high_sigma_market, 
 boundaries=[-2.5,2.5],
 mu_m = 0.01, sigma_m = 0.02,
 de = "i",  exchange_fun = "market",name_model = "Exchpoly",
-o_x = -2, o_y = 2, sigma = sqrt(10), alpha = 0.5, eta = 0.5, other_output_name=["h","q_x","q_y","c_x","c_y"],
-write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+o_x = -2., o_y = 2., sigma = sqrt(10), alpha = 0.5, eta = 0.5, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
 j_print = 150,simplify=false)))
 
 res=evol_model(reproduction_WF,fitness_function,parameters)
@@ -567,7 +597,7 @@ eta_list = collect(0.05:0.05:0.95)
         boundaries= [-2.5,2.5],
         mu_m = 0.01, sigma_m = 0.02,
         de = "i",  exchange_fun = "market",name_model = "Exchpoly",
-        o_x = -2, o_y = 2, sigma = sqrt(sigmasq_i), alpha = 0.5, eta = eta_i, other_output_name=["h","q_x","q_y","c_x","c_y"],
+        o_x = -2., o_y = 2., sigma = sqrt(sigmasq_i), alpha = 0.5, eta = eta_i, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
         write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
         j_print = 9999, n_print=1,simplify=false)))
         evol_model(reproduction_WF,fitness_function,parameters)
@@ -576,3 +606,211 @@ end
 
 
 #endregion
+
+#region Robustness checks (with fixed time allocation )
+
+#*** Baseline (for measure of variance)
+cd(homedir()*"/OneDrive/Research/A1-Projects/2023_ExchPoly/Res/Simul/noh")
+
+#--- Dyadic exchange
+
+parameters = Dict{Any,Any}(pairs((z_ini = 2., n_gen = 10000, n_ini = 2, n_patch = 5000,n_simul=10,
+boundaries=[-10.,10.],
+mu_m = 0.01, sigma_m = 0.02, n_loci = 0,str_selection=1.,
+de = "g",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
+o_x = -2., o_y = 2., sigma = sqrt(1), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","n_print","simplify"],
+j_print = 250,n_print=1)))
+
+res=evol_model(reproduction_WF,fitness_function,parameters)
+
+#--- Market exchange
+
+parameters = Dict{Any,Any}(pairs((z_ini = 2., n_gen = 10000, n_ini = 10000, n_patch = 1,n_simul=10,
+boundaries=[-10.,10.],
+mu_m = 0.01, sigma_m = 0.02, n_loci = 0,str_selection=1.,
+de = "g",  exchange_fun = "market",name_model = "Exchpoly",
+o_x = -2., o_y = 2., sigma = sqrt(1), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","n_print","simplify"],
+j_print = 250,n_print=1,simplify=false)))
+
+res=evol_model(reproduction_WF,fitness_function,parameters)
+
+
+#*** Larger mutation effects
+
+## We increase the standard deviation of mutational effects by 10 fold
+plot(Normal(0,0.02))
+plot!(Normal(0,0.2))
+
+#--- Autarky
+cd(homedir()*"/OneDrive/Research/A1-Projects/2023_ExchPoly/Res/Simul/noh_mut")
+
+#--- Dyadic exchange
+sigmasq_list = collect(0.5:0.5:8.5)
+alpha_list = collect(0.1:0.05:0.9)
+p = Progress(length(alpha_list) * length(sigmasq_list) , desc="Running simulations...")
+
+for alpha_i in alpha_list
+    for sigmasq_i in sigmasq_list
+        parameters = Dict{Any,Any}(pairs((z_ini = 0., n_gen = 10000, n_ini = 2, n_patch = 2500, n_simul=10,
+        boundaries=[-2.5,2.5],
+        mu_m = 0.01, sigma_m = 0.2,
+        de = "g",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
+        o_x = -2., o_y = 2., sigma = sqrt(sigmasq_i), alpha = alpha_i, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+        write_file=true, parameters_to_omit=["z_ini","n_ini","sigma_m","j_print","str_selection","n_print","simplify","n_loci"],
+        j_print = 1, n_print=10000)))
+        evol_model(reproduction_WF,fitness_function,parameters)
+        next!(p)
+    end
+end
+
+
+#--- Market exchange
+sigmasq_list = collect(0.5:0.5:8.5)
+alpha_list = collect(0.1:0.05:0.9)
+p = Progress(length(alpha_list) * length(sigmasq_list) , desc="Running simulations...")
+
+for alpha_i in alpha_list
+    for sigmasq_i in sigmasq_list
+        parameters = Dict{Any,Any}(pairs((z_ini = 0., n_gen = 10000, n_ini = 5000, n_patch = 1, n_simul=10,
+        boundaries=[-2.5,2.5],
+        mu_m = 0.01, sigma_m = 0.2,
+        de = "g",  exchange_fun = "market",name_model = "Exchpoly",
+        o_x = -2., o_y = 2., sigma = sqrt(sigmasq_i), alpha = alpha_i, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+        write_file=true, parameters_to_omit=["z_ini","n_ini","sigma_m","j_print","str_selection","n_print","simplify"],
+        j_print = 1, n_print=10000,simplify=false)))
+        evol_model(reproduction_WF,fitness_function,parameters)
+        next!(p)
+    end
+end
+
+
+#*** Sexual reproduction
+cd(homedir()*"/OneDrive/Research/A1-Projects/2023_ExchPoly/Res/Simul/noh_sexual")
+#--- One Locus
+
+## Dyadic bargaining
+
+parameters = Dict{Any,Any}(pairs((z_ini = 2., n_gen = 15000, n_ini = 2, n_patch = 2500,
+boundaries=[-10.,10.],
+mu_m = 0.01, sigma_m = 0.02, n_loci = 1,str_selection=1.,
+de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
+o_x = -2., o_y = 2., sigma = sqrt(1), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","n_print","simplify"],
+j_print = 300,n_print=1)))
+
+res=evol_model(reproduction_WF_sexual_multilocus,fitness_function,parameters)
+
+## With replicates (for variance)
+
+parameters = Dict{Any,Any}(pairs((z_ini = 2., n_gen = 10000, n_ini = 2, n_patch = 5000,n_simul=10,
+boundaries=[-10.,10.],
+mu_m = 0.01, sigma_m = 0.02, n_loci = 1,str_selection=1.,
+de = "g",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
+o_x = -2., o_y = 2., sigma = sqrt(1), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","n_print","simplify"],
+j_print = 250,n_print=1,distributed=false)))
+
+res=evol_model(reproduction_WF_sexual_multilocus,fitness_function,parameters)
+
+## Market
+parameters = Dict{Any,Any}(pairs((z_ini = 2., n_gen = 25000, n_ini = 5000, n_patch = 1,
+boundaries=[-10.,10],
+mu_m = 0.01, sigma_m = 0.02, n_loci = 1,
+de = "i",  exchange_fun = "market",name_model = "Exchpoly",
+o_x = -2., o_y = 2., sigma = sqrt(5), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","n_print","simplify"],
+j_print = 500,n_print=1,simplify=false)))
+
+res=evol_model(reproduction_WF_sexual_multilocus,fitness_function,parameters)
+
+## With replicates (for variance)
+
+parameters = Dict{Any,Any}(pairs((z_ini = 2., n_gen = 10000, n_ini = 10000, n_patch = 1,n_simul=10,
+boundaries=[-10.,10.],
+mu_m = 0.01, sigma_m = 0.02, n_loci = 1,str_selection=1.,
+de = "g",  exchange_fun = "market",name_model = "Exchpoly",
+o_x = -2., o_y = 2., sigma = sqrt(1), alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y","var_z"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","n_print","simplify"],
+j_print = 250,n_print=1,simplify=false)))
+
+res=evol_model(reproduction_WF_sexual_multilocus,fitness_function,parameters)
+
+
+
+#*** Two traits
+cd(homedir()*"/OneDrive/Research/A1-Projects/2023_ExchPoly/Res/Simul/noh_2traits")
+
+function constraint_on_traits(traits::Tuple)
+    if sum(traits) < 1
+        return(traits)
+    else
+        #-> They are considered to be effort dedicated to each.
+        traits ./ sum(traits)
+    end
+end
+
+#! Be careful, use o_x = 1 and o_y = 2 as integer to use the right production functions
+
+#--- Dyadic exchange
+parameters = Dict{Any,Any}(pairs((z_ini = (0.1,0.1), n_gen = 20000, n_ini = 2, n_patch = 500,
+boundaries=[[0.,1.],[0.,1]],
+mu_m = 0.01, sigma_m = 0.01,
+de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
+o_x = 1, o_y = 2, sigma = 5., alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+j_print = 500,n_print=1)))
+
+res=evol_model(reproduction_WF,fitness_function,parameters;genotype_to_phenotype_mapping=constraint_on_traits)
+
+#--- Market exchange
+
+parameters = Dict{Any,Any}(pairs((z_ini = (0.1,0.1), n_gen = 20000, n_ini = 1000, n_patch = 1,
+boundaries=[[0.,1.],[0.,1]],
+mu_m = 0.01, sigma_m = 0.01,
+de = "i",  exchange_fun = "market",name_model = "Exchpoly",
+o_x = 1, o_y = 2, sigma = 2., alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+j_print = 500,n_print=1,simplify=false)))
+
+res=evol_model(reproduction_WF,fitness_function,parameters;genotype_to_phenotype_mapping=constraint_on_traits)
+
+#*** Two traits + sexual reproduction
+
+#! Be careful, we change the definition of mapping here. 
+function average_mapping(ind::Tuple{Vararg{<:AbstractMatrix{<:Real}}})
+    constraint_on_traits(mean.(ind))
+end
+
+
+function constraint_on_traits(traits::Tuple)
+    if sum(traits) < 1
+        return(traits)
+    else
+        traits ./ sum(traits)
+    end
+end
+
+#--- Dyadic exchange
+parameters = Dict{Any,Any}(pairs((z_ini = (0.1,0.1), n_gen = 30000, n_ini = 2, n_patch = 2500,
+boundaries=[[0.,1.],[0.,1]],
+mu_m = 0.01, sigma_m = 0.01, n_loci = 1,
+de = "i",  exchange_fun = "walrasian_bargain",name_model = "Exchpoly",
+o_x = 1, o_y = 2, sigma = 5., alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+j_print = 1500,n_print=1)))
+
+res=evol_model(reproduction_WF_sexual_multilocus,fitness_function,parameters)
+
+
+#--- Market
+parameters = Dict{Any,Any}(pairs((z_ini = (0.1,0.1), n_gen = 25000, n_ini = 5000, n_patch = 1,
+boundaries=[[0.,1.],[0.,1]],
+mu_m = 0.01, sigma_m = 0.01, n_loci = 1,
+de = "i",  exchange_fun = "market",name_model = "Exchpoly",
+o_x = 1, o_y = 2, sigma = 5., alpha = 0.5, eta = 0, other_output_name=["h","q_x","q_y","c_x","c_y"],
+write_file=true, parameters_to_omit=["z_ini","n_ini","mu_m","sigma_m","j_print","str_selection","n_print","simplify"],
+j_print = 1000,n_print=1,simplify=false)))
+
+res=evol_model(reproduction_WF_sexual_multilocus,fitness_function,parameters)
